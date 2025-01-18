@@ -1,2 +1,2 @@
 # uTOML
-A tiny TOML parser in C.
+A tiny TOML parser in C, intended for applications where memory is tight or not allocatable, it is thus limited to 64KB documents. Supports strict and permissive parsing modes(WIP). In strict mode it will abort parsing as soon as an error occurs and report the error, however in permissive mode, it will attempt to parse as much as it can and even attempt to recover after a malformed token if possible, some errors may even parse the intent correctly but still issue a warning that something was wrong to comply with the specification.
