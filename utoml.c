@@ -51,6 +51,10 @@ char* readFileToCstring(char* fname)
 	return contents;
 }
 
+// get pointer to end of the line, either '\n' or '\0'
+inline char* findLineEnd(char const* src)
+{	return src + strcspn(src, "\n");	}
+
 // get pointer to next non space or tab character
 inline char* findNextNonWhiteSpace(char const* src)
 {	return src + strspn(src, " \t");	}
@@ -128,14 +132,71 @@ char* findStringMultiLineBasicClose(char const* src)
 	}
 }
 
+// returns true if a character is not one of "{}[]"
+inline bool isNotBracket(char c)
+{
+	c |= 0x20;	// '[' to '{', and ']' to '}'
+	c += c & 2;	// '{' to '}'
+	return c != '}';
+}
+
+// expects a pointer to an opening '{' or '['
+// assumes only '{' and '[' characters can nest other semantically relevant
+// brackets within them, ie grow the stack, strings are skipped over
+char* findClosingBracket(char const* src)
+{
+	// stack of up to 64 booleans that stores the state of what bracket type to look for
+	// push == "<< 1" + "| (0 or 1)",
+	// read_head == "& 1",
+	// pop == ">> 1",
+	//NOTE: this is done to mimimize pollution of the call stack with potentially
+	// many recursive layers of findClosingBracket()
+	uint64_t stack = !!(*src & 0x20);
+	char depth = 1;	//stores the depth of the stack
+
+	while(depth)
+	{
+		// advance past starting bracket/non-bracket chars until any of the following "\0{}[]"
+		while((*(++src)) && isNotBracket(*src));
+
+		switch(*src | 0x20)	//'[' to '{', ']' to '}', and '\0' to ' '(0x20)
+		{
+		case '}':
+			// if bracket was matching type to most recent opening bracket
+			if(stack & 1 == !!(*src & 0x20))
+			{
+				--depth;
+				stack >>= 1;
+				break;
+			}
+			//else mismatched closing bracket, fall through to error
+		case 0x20:	// missing closing bracket, reached end of file
+			return NULL;
+		case '{':	// add new open bracket to stack
+			if(depth < 64)
+			{
+				++depth;
+				stack = (stack << 1) | !!(*src & 0x20);
+			}
+			else	// out of room on current boolean stack, recursive call to get a new one
+			{
+				src = findClosingBracket(src);
+				if(!src)
+					return NULL;
+			}
+		}
+	}
+	return src;
+}
+
 inline bool isValidBareKeyChar(char c)
 {
 	char lower = c | 0x20;
 	if(lower < 'a' || lower > 'z')		// if not an ascii letter
 		if(c < '0' || c > '9')			// and not an ascii number
 			if(c != '-' && c != '_')	// and not - or _
-				return false;			// then it's not a valid character
-	return true;	// else it was
+				return 0;			// then it's not a valid character
+	return 1;	// else it was
 }
 
 char* findBareKeyEnd(char const* src)
@@ -146,10 +207,71 @@ char* findBareKeyEnd(char const* src)
 	return src;
 }
 
-// get pointer to the end of a key/chain of dotted keys
-char* findKeyEnd(char const* src)
+// variant that allows bare keys to use any character but whitespace '=' or '.'
+// which can have semantic meaning in that context
+inline char* findBareKeyEndPermissive(char const* src)
+{	return src + strcspn(src, ". \t]#\"'=\n");	}
+
+// get pointer to the end of a key/chain of dotted keys, searches for an '='
+// that isn't enclosed in a string. Characters after any '"' or '\'' to the
+// corresponding closing character are considered to be "in a string" regardless
+// of valid position after a '.' or validity of preceding bare keys characters
+// aside from those with immediately relevant semantic meaning
+//NOTE: only used during getting a count of keys so as to find the '=' such that
+// we can check whether the following value is a multi-line one
+char* findKeyvalKeyEndPermissive(char const* src)
 {
-	while
+	while(*src != '=')
+	{
+		switch(*src)
+		{
+		case '"':
+			src = findStringBasicClose(src + 1);
+			if(*src != '"')	// if failed to close
+			{
+				//TODO: emit line error (close fail + bad key)
+				return src;
+			}
+			break;
+		case '\'':
+			src = findStringLiteralClose(src + 1);
+			if(*src != '\'')	// if failed to close
+			{
+				//TODO: emit line error (close fail + bad key)
+				return src;
+			}
+			break;
+		case '#':
+		case '\n':
+		case '\0':
+			//TODO: emit line error (bad key)
+			return src;
+		//default:	// eat bare-keys/'.'/whitespace/invalid chars
+		}
+		++src;
+	}
+	return src;
+}
+
+// returns pointer to the end of line after the end of the key
+// assumes src points to first non-whitespace char beyond the '='
+char* findKeyvalValEndPermissive(char const* src)
+{
+	switch(*src)
+	{
+	case '\'':
+		if(src[1] == '\'' && src[2] == '\'')
+			src = findStringMultiLineLiteralClose(src + 3);
+		break;
+	case '"':
+		if(src[1] == '"' && src[2] == '"')
+			src = findStringMultiLineBasicClose(src + 3);
+		break;
+	case '[':
+	case '{':
+		src = findClosingBracket(src);
+	}
+	return findLineEnd(src);
 }
 
 // contents: inlcudes both the file 
