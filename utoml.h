@@ -57,6 +57,7 @@ typedef struct __attribute__((packed)) _UTomlValType{
 
 enum UTomlErrVal{
 	UTOML_OK = 0,				// no error
+	UTOML_ERR_OUT_OF_MEMORY,	//
 	UTOML_ERR_MISSING_CLOSE,	// closing quote/square bracket/curly brace
 };
 

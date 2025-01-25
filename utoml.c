@@ -274,6 +274,15 @@ char* findKeyvalValEndPermissive(char const* src)
 	return findLineEnd(src);
 }
 
+UTomlError discoverTopLevelKeys(char const* contents, char* root_tbl_data, size_t max_size)
+{
+	UTomlHandle* handle_array = (UTomlHandle*)root_tbl_data;
+	uint16_t key_cnt = 0;
+	UTomlErrVal 
+
+	while()
+}
+
 // contents: inlcudes both the file 
 // expects contents to be aligned to native alignment, this is true by default if it was malloc'd
 // assumes contents are null terminated
@@ -287,5 +296,7 @@ UTomlTable utomlParse(char* contents, size_t max_size)
 	// or a multiline string and if it is, you have to match the closing symbol which involves a bracket context stack
 	// heading style tables and table arrays suffer from this especially since this means you can't just search for '[' at the start of a line,
 	// you also have to make sure it's not part of a value, which involves checking all keys-val pairs in them
+
+
 
 }
